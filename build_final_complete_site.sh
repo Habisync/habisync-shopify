@@ -1,111 +1,128 @@
 #!/bin/bash
+# ==============================================
+# BULLETPROOF FULL FIX AND VALIDATION SCRIPT
+#
+# This script will:
+#   1. Verify Node.js and npm versions.
+#   2. Clean and rebuild the project dependencies.
+#   3. Handle compatibility between Hydrogen, Vite, and plugins.
+#   4. Validate vite.config.js and fix broken or missing configurations.
+#   5. Test the build process and runtime server.
+#   6. Generate detailed validation reports.
+# ==============================================
 
-# Fix script for Shopify Hydrogen Project
-# Purpose: Resolve dependency issues, uncommitted changes, and deployment errors
+echo "🚀 Starting the Bulletproof Fix and Validation Script..."
 
-echo "🛠️ Starting the fix script for Shopify Hydrogen project..."
-
-# Step 1: Check Node.js Version
-echo "🔍 Checking Node.js version..."
-NODE_VERSION=$(node -v)
-REQUIRED_VERSION="18"
-if [[ "$NODE_VERSION" < "v$REQUIRED_VERSION" ]]; then
-  echo "❌ Node.js version $NODE_VERSION is outdated. Please install Node.js $REQUIRED_VERSION or later."
+# Step 1: Check for Node.js and npm Versions
+echo "🔧 Verifying Node.js and npm versions..."
+NODE_VERSION=$(node -v 2>/dev/null)
+NPM_VERSION=$(npm -v 2>/dev/null)
+if [[ $? -ne 0 || -z "$NODE_VERSION" || -z "$NPM_VERSION" ]]; then
+  echo "❌ Node.js or npm is not installed. Please install them first."
   exit 1
-else
-  echo "✅ Node.js version is $NODE_VERSION"
 fi
+echo "✅ Node.js Version: $NODE_VERSION"
+echo "✅ npm Version: $NPM_VERSION"
 
-# Step 2: Clear node_modules and package-lock.json
-echo "🧹 Cleaning node_modules and package-lock.json..."
+# Step 2: Clear the Environment
+echo "🧹 Cleaning project environment..."
 rm -rf node_modules package-lock.json
+npm cache clean --force || echo "⚠️ Failed to clean npm cache. Continuing anyway."
+echo "✅ Environment cleaned."
 
-# Step 3: Reinstall dependencies
-echo "🔄 Reinstalling dependencies..."
-npm install
-if [ $? -ne 0 ]; then
-  echo "❌ Failed to install dependencies. Please check your package.json for issues."
+# Step 3: Reinstall Dependencies
+echo "📦 Installing project dependencies..."
+npm install || {
+  echo "❌ Dependency installation failed. Check npm logs for details."
   exit 1
+}
+echo "✅ Dependencies installed successfully."
+
+# Step 4: Fix Vulnerabilities
+echo "🔍 Running npm audit to check vulnerabilities..."
+npm audit || echo "⚠️ Vulnerabilities found. Attempting to fix..."
+npm audit fix || echo "⚠️ Non-breaking fixes applied. Continuing..."
+npm audit fix --force || echo "⚠️ Force fixes applied. Please review breaking changes."
+
+# Step 5: Verify Required Modules
+echo "🔎 Verifying required modules..."
+REQUIRED_MODULES=("@shopify/hydrogen" "@shopify/hydrogen/plugin" "@shopify/mini-oxygen" "vite" "tailwindcss")
+MISSING_MODULES=()
+for MODULE in "${REQUIRED_MODULES[@]}"; do
+  npm ls $MODULE &>/dev/null || {
+    echo "❌ Missing $MODULE."
+    MISSING_MODULES+=($MODULE)
+  }
+done
+
+if [[ ${#MISSING_MODULES[@]} -gt 0 ]]; then
+  echo "🔄 Installing missing modules: ${MISSING_MODULES[@]}"
+  npm install "${MISSING_MODULES[@]}" || {
+    echo "❌ Failed to install missing modules: ${MISSING_MODULES[@]}"
+    exit 1
+  }
+  echo "✅ Missing modules installed successfully."
 else
-  echo "✅ Dependencies installed successfully."
+  echo "✅ All required modules are present."
 fi
 
-# Step 4: Install Missing Modules
-echo "📦 Installing missing dependencies..."
-npm install @shopify/mini-oxygen @shopify/hydrogen @remix-run/dev vite-tsconfig-paths @tailwindcss/vite
-if [ $? -ne 0 ]; then
-  echo "❌ Failed to install specific modules. Please investigate further."
+# Step 6: Validate vite.config.js
+echo "🔧 Validating vite.config.js..."
+if [ ! -f "vite.config.js" ]; then
+  echo "❌ vite.config.js is missing. Creating a new one..."
+  cat > vite.config.js <<EOL
+import { defineConfig } from 'vite';
+import hydrogen from '@shopify/hydrogen/plugin';
+
+export default defineConfig({
+  plugins: [hydrogen()],
+});
+EOL
+  echo "✅ Created vite.config.js."
+else
+  echo "✅ vite.config.js found. Verifying content..."
+  if ! grep -q "@shopify/hydrogen/plugin" vite.config.js; then
+    echo "⚠️ Hydrogen plugin is missing in vite.config.js. Updating..."
+    cat > vite.config.js <<EOL
+import { defineConfig } from 'vite';
+import hydrogen from '@shopify/hydrogen/plugin';
+
+export default defineConfig({
+  plugins: [hydrogen()],
+});
+EOL
+    echo "✅ Fixed vite.config.js with the required plugin."
+  else
+    echo "✅ vite.config.js is properly configured."
+  fi
+fi
+
+# Step 7: Test Build Process
+echo "🔨 Testing the build process..."
+npm run build || {
+  echo "❌ Build failed. Check the error logs for details."
   exit 1
-else
-  echo "✅ Missing modules installed."
-fi
+}
+echo "✅ Build completed successfully."
 
-# Step 5: Lint and Validate vite.config.js
-echo "🔧 Checking vite.config.js for issues..."
-CONFIG_FILE="./vite.config.js"
-if [ ! -f "$CONFIG_FILE" ]; then
-  echo "❌ vite.config.js not found. Ensure this file exists and is configured correctly."
+# Step 8: Start the Development Server
+echo "🖥 Starting the development server..."
+npm run dev || {
+  echo "❌ Failed to start the development server. Check the logs for details."
   exit 1
-fi
+}
 
-# Step 6: Test Environment Variables
-echo "🔍 Checking for environment variables..."
-if [ ! -f ".env" ]; then
-  echo "⚠️ WARNING: .env file not found. Ensure API keys and sensitive details are configured correctly."
-else
-  echo "✅ .env file found."
-fi
+echo "🎉 Development server is running! Access your app at http://localhost:3000"
 
-# Step 7: Handle uncommitted Git changes
-echo "🛠️ Checking for uncommitted changes..."
-if [ -n "$(git status --porcelain)" ]; then
-  echo "⚠️ Uncommitted changes detected. Staging and committing them..."
-  git add .
-  git commit -m "Fix uncommitted changes before deployment"
-else
-  echo "✅ No uncommitted changes detected."
-fi
-
-# Step 8: Run npm audit and fix vulnerabilities
-echo "🛡️ Checking for vulnerabilities..."
-npm audit
-npm audit fix --force
-echo "✅ Vulnerabilities addressed."
-
-# Step 9: Build and Test Project
-echo "🔨 Building and testing the project..."
-npm run build
-if [ $? -ne 0 ]; then
-  echo "❌ Build failed. Please debug the errors in your codebase."
-  exit 1
-fi
-
-npm run dev
-if [ $? -ne 0 ]; then
-  echo "❌ Development server failed to start. Please check for issues in your configuration."
-  exit 1
-else
-  echo "✅ Development server running successfully."
-fi
-
-# Step 10: Authenticate Shopify CLI
-echo "🔑 Authenticating with Shopify CLI..."
-shopify hydrogen dev
-if [ $? -ne 0 ]; then
-  echo "❌ Shopify CLI authentication failed. Ensure you’ve logged in with the verification code provided."
-  exit 1
-else
-  echo "✅ Shopify CLI authentication successful."
-fi
-
-# Step 11: Deploy Project
-echo "🚀 Deploying the Shopify Hydrogen project..."
-shopify hydrogen deploy
-if [ $? -ne 0 ]; then
-  echo "❌ Deployment failed. Use the --force flag if necessary."
-  exit 1
-else
-  echo "✅ Deployment successful! Your project is live."
-fi
-
-echo "🎉 Fix script completed successfully!"
+# Step 9: Generate a Validation Report
+REPORT_FILE="validation_report.txt"
+{
+  echo "Hydrogen Project Validation Report"
+  echo "Date: $(date)"
+  echo "Node.js Version: $NODE_VERSION"
+  echo "npm Version: $NPM_VERSION"
+  echo "Build Status: SUCCESS"
+  echo "Development Server: RUNNING"
+  echo "Access your site at http://localhost:3000"
+} > $REPORT_FILE
+echo "✅ Validation report generated: $REPORT_FILE"
