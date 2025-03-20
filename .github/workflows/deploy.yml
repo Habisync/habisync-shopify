@@ -38,6 +38,11 @@ jobs:
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v20
         with:
-          vercel-token: Ae2HvRvsv1TAcIdtbVQlgGS3
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-project-id: habisyncs-projects
           vercel-org-id: YCGA2BOsynXPOqogWLS8nZvJ
+
+      - name: Update git submodules
+        run: |
+          git submodule init
+          git submodule update
