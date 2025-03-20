@@ -1,4 +1,4 @@
-name: Storefront 1000032899
+name: Storefront 1000032904
 on: [push]
 
 permissions:
@@ -38,4 +38,9 @@ jobs:
       - name: Build and Publish to Oxygen
         run: npx shopify hydrogen deploy
         env:
-          SHOPIFY_HYDROGEN_DEPLOYMENT_TOKEN: ${{ secrets.OXYGEN_DEPLOYMENT_TOKEN_1000032899 }}
+          SHOPIFY_HYDROGEN_DEPLOYMENT_TOKEN: ${{ secrets.OXYGEN_DEPLOYMENT_TOKEN_1000032904 }}
+
+      - name: Update git submodules
+        run: |
+          git submodule init
+          git submodule update
