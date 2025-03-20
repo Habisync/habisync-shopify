@@ -55,4 +55,4 @@ jobs:
       - name: Update git submodules
         run: |
           git submodule init
-          git submodule update
+          git submodule update 
